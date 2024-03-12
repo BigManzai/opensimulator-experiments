@@ -1,0 +1,148 @@
+Um die assets Tabelle in eine assetType Tabelle aufzuteilen, 
+müssen wir zuerst die vorhandenen Datenstrukturen und Methoden betrachten.
+
+Die AssetDataBase-Klasse stellt abstrakte Methoden zur Interaktion mit Asset-Datenbanken bereit. 
+Wenn Sie die assets-Tabelle aufteilen möchten, 
+müssen Sie die Struktur der Datenbank ändern und die Methoden entsprechend anpassen.
+
+Ich gehe davon aus, dass die AssetDataBase-Klasse eine Datenbank repräsentiert, 
+in der Assets gespeichert sind, 
+und dass jedes Asset eine bestimmte Art von Asset hat (z. B. Texturen, Sounddateien usw.). 
+Um die assets-Tabelle in eine assetType-Tabelle aufzuteilen, 
+müssen Sie die Datenbankstruktur ändern, um die verschiedenen Arten von Assets zu unterstützen.
+
+Hier ist ein Ansatz, wie Sie vorgehen könnten:
+
+    Datenbankstruktur ändern: Fügen Sie eine neue Tabelle assetType hinzu, 
+	die die verschiedenen Arten von Assets enthält. 
+	Jeder Datensatz in dieser Tabelle könnte eine eindeutige ID und den Namen der Asset-Art enthalten.
+
+    Assets umstrukturieren: Passen Sie die AssetBase-Klasse an, um die Art des Assets zu speichern. 
+	Dies kann beispielsweise durch Hinzufügen eines assetType-Feldes erfolgen.
+
+    Anpassen der Methoden: Passen Sie die Methoden der AssetDataBase-Klasse an, um die neuen Datenbankstrukturen zu berücksichtigen. 
+	Beispielsweise müssen Sie die StoreAsset-Methode anpassen, um die Art des Assets in die entsprechende Tabelle zu speichern.
+
+    Aktualisieren von FetchAssetMetadataSet: Aktualisieren Sie die FetchAssetMetadataSet-Methode, um die Asset-Typen abzurufen und zurückzugeben.
+
+Hier ist ein möglicher Ansatz, wie die Klassen und Methoden angepasst werden könnten:
+
+csharp
+
+public abstract class AssetDataBase : IAssetDataPlugin
+{
+    public abstract AssetBase GetAsset(UUID uuid);
+    public abstract bool StoreAsset(AssetBase asset, string assetType);
+    public abstract bool[] AssetsExist(UUID[] uuids);
+    public abstract List<AssetMetadata> FetchAssetMetadataSet(int start, int count, string assetType);
+    
+    public abstract string Version { get; }
+    public abstract string Name { get; }
+    public abstract void Initialise(string connect);
+    public abstract void Initialise();
+    public abstract void Dispose();
+    public abstract bool Delete(string id);
+}
+
+public class AssetBase
+{
+    public UUID UUID { get; set; }
+    public string Name { get; set; }
+    public string Description { get; set; }
+    public string AssetType { get; set; } // New field to store asset type
+    // Other properties of AssetBase
+}
+
+public class AssetMetadata
+{
+    public UUID UUID { get; set; }
+    public string Name { get; set; }
+    public string Description { get; set; }
+    public string AssetType { get; set; } // New field to store asset type
+    // Other properties of AssetMetadata
+}
+
+In diesem Beispiel wurde die AssetBase-Klasse um ein AssetType-Feld erweitert, um den Typ des Assets zu speichern. 
+Die AssetDataBase-Klasse wurde ebenfalls aktualisiert, um die Art des Assets bei der Speicherung und beim Abruf zu berücksichtigen.
+
+Denken Sie daran, dass dies nur ein grober Ansatz ist und Sie je nach den Anforderungen Ihrer Anwendung weitere Anpassungen vornehmen müssen. 
+Sie müssen auch sicherstellen, dass die Datenbankstruktur entsprechend aktualisiert wird, 
+um die assetType-Tabelle zu unterstützen und Beziehungen zwischen den Tabellen zu verwalten.
+
+AssetStore.migrations:  ﻿# -----------------
+:VERSION 10
+
+BEGIN;
+
+CREATE TABLE IF NOT EXISTS `assets` (
+  `name` varchar(64) NOT NULL,
+  `description` varchar(64) NOT NULL,
+  `assetType` tinyint(4) NOT NULL,
+  `local` tinyint(1) NOT NULL,
+  `temporary` tinyint(1) NOT NULL,
+  `data` longblob NOT NULL,
+  `id` char(36) NOT NULL DEFAULT '00000000-0000-0000-0000-000000000000',
+  `create_time` int(11) DEFAULT '0',
+  `access_time` int(11) DEFAULT '0',
+  `asset_flags` int(11) NOT NULL DEFAULT '0',
+  `CreatorID` varchar(128) NOT NULL DEFAULT '',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+COMMIT;
+
+
+Basierend auf der vorhandenen assets-Tabelle in der Datenbank und unter Berücksichtigung der Anforderung, 
+die Tabelle in assetType aufzuteilen, könnten wir die Migration wie folgt durchführen:
+
+    Ändern der Datenbankstruktur: Wir müssen die Tabelle assets ändern, um die assetType-Informationen zu unterstützen.
+
+    Erstellen der assetType-Tabelle: Wir müssen eine neue Tabelle assetType erstellen, um die verschiedenen Arten von Assets zu speichern.
+
+Hier ist eine mögliche Migrationsskriptdatei:
+
+sql
+
+# -----------------
+:VERSION 11
+
+BEGIN;
+
+-- Ändern der assets-Tabelle, um assetType als Fremdschlüssel zu unterstützen
+ALTER TABLE `assets`
+  ADD COLUMN `asset_type_id` INT UNSIGNED NOT NULL AFTER `assetType`;
+
+-- Erstellen der assetType-Tabelle
+CREATE TABLE IF NOT EXISTS `assetType` (
+  `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  `name` VARCHAR(64) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+-- Beispiel-Einträge in der assetType-Tabelle einfügen
+INSERT INTO `assetType` (`name`) VALUES
+('Texture'),
+('Sound'),
+('Script'),
+('Animation');
+
+-- Hinzufügen von Fremdschlüsselbeziehung zwischen assets und assetType
+ALTER TABLE `assets`
+  ADD CONSTRAINT `fk_assetType_id`
+  FOREIGN KEY (`asset_type_id`)
+  REFERENCES `assetType`(`id`);
+
+-- Löschen der Spalte assetType, da wir nun asset_type_id verwenden
+ALTER TABLE `assets` DROP COLUMN `assetType`;
+
+COMMIT;
+
+Dieses Skript führt die folgenden Schritte aus:
+
+    Fügt eine neue Spalte asset_type_id zur assets-Tabelle hinzu, um die Asset-Typ-Informationen als Fremdschlüssel zu speichern.
+    Erstellt die Tabelle assetType, um die verschiedenen Arten von Assets zu speichern.
+    Fügt einige Beispiel-Einträge in die assetType-Tabelle ein.
+    Fügt eine Fremdschlüsselbeziehung zwischen assets und assetType hinzu, um die Asset-Typ-Informationen zu verknüpfen.
+    Löscht die alte Spalte assetType aus der assets-Tabelle, da wir nun asset_type_id verwenden.
+
+Dieses Migrationsskript kann verwendet werden, um die Datenbank gemäß den Anforderungen zu aktualisieren und die assets-Tabelle in assetType aufzuteilen. 
+Beachten Sie jedoch, dass je nach Datenbankmanagementsystem und den spezifischen Anforderungen Ihrer Anwendung weitere Anpassungen erforderlich sein können.
